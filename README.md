@@ -5,7 +5,7 @@ To authorize you need to provide API URL, API Password and optionally API User w
 
 This application provides values for:
 
-    PV system power
-    Current PV power
-    PV energy produced today
-    Total PV energy
+- PV system power
+- Current PV power
+- PV energy produced today
+- Total PV energy
