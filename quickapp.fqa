@@ -1,0 +1,151 @@
+{
+    "name": "SMA",
+    "type": "com.fibaro.deviceController",
+    "apiVersion": "1.2",
+    "initialProperties": {
+        "viewLayout": {
+            "$jason": {
+                "body": {
+                    "header": {
+                        "style": {
+                            "height": "0"
+                        },
+                        "title": "fibaro_sma_quickapp"
+                    },
+                    "sections": {
+                        "items": [
+                            {
+                                "components": [
+                                    {
+                                        "name": "label1",
+                                        "style": {
+                                            "weight": "1.2"
+                                        },
+                                        "text": "Loading...",
+                                        "type": "label"
+                                    },
+                                    {
+                                        "style": {
+                                            "weight": "0.5"
+                                        },
+                                        "type": "space"
+                                    }
+                                ],
+                                "style": {
+                                    "weight": "1.2"
+                                },
+                                "type": "vertical"
+                            },
+                            {
+                                "components": [
+                                    {
+                                        "name": "button1",
+                                        "style": {
+                                            "weight": "1.2"
+                                        },
+                                        "text": "",
+                                        "type": "button"
+                                    },
+                                    {
+                                        "style": {
+                                            "weight": "0.5"
+                                        },
+                                        "type": "space"
+                                    }
+                                ],
+                                "style": {
+                                    "weight": "1.2"
+                                },
+                                "type": "vertical"
+                            },
+                            {
+                                "components": [
+                                    {
+                                        "name": "label2",
+                                        "style": {
+                                            "weight": "1.2"
+                                        },
+                                        "text": "",
+                                        "type": "label"
+                                    },
+                                    {
+                                        "style": {
+                                            "weight": "0.5"
+                                        },
+                                        "type": "space"
+                                    }
+                                ],
+                                "style": {
+                                    "weight": "1.2"
+                                },
+                                "type": "vertical"
+                            },
+                            {
+                                "components": [
+                                    {
+                                        "max": "100",
+                                        "min": "0",
+                                        "name": "slider1",
+                                        "style": {
+                                            "weight": "1.2"
+                                        },
+                                        "text": "",
+                                        "type": "slider"
+                                    },
+                                    {
+                                        "style": {
+                                            "weight": "0.5"
+                                        },
+                                        "type": "space"
+                                    }
+                                ],
+                                "style": {
+                                    "weight": "1.2"
+                                },
+                                "type": "vertical"
+                            }
+                        ]
+                    }
+                },
+                "head": {
+                    "title": "fibaro_sma_quickapp"
+                }
+            }
+        },
+        "uiCallbacks": [
+            {
+                "callback": "button1Event",
+                "eventType": "onReleased",
+                "name": "button1"
+            },
+            {
+                "callback": "slider1Event",
+                "eventType": "onChanged",
+                "name": "slider1"
+            }
+        ],
+        "quickAppVariables": [
+            {
+                "name": "API URL",
+                "value": "-"
+            },
+            {
+                "name": "API User",
+                "value": "usr"
+            },
+            {
+                "name": "API Password",
+                "value": "-"
+            }
+        ],
+        "typeTemplateInitialized": true
+    },
+    "files": [
+        {
+            "name": "main",
+            "isMain": true,
+            "isOpen": true,
+            "content": "-- ------------------------------------------------------\n-- Fibaro Quick App for SMA inverters\n-- Author: Irek Kubicki <irek@ixdude.com>\n-- v.0.1.0\n-- GIT: https://github.com/ikubicki/fibaro-sma\n-- ------------------------------------------------------\n\nfunction QuickApp:onInit()\n    self:trace(\"\")\n    self:trace(\"SMA Quick App starts\")\n    self:trace(\"Author: Irek Kubicki <irek@ixdude.com>\")\n    self:trace(\"GIT: https://github.com/ikubicki/fibaro-sma\")\n    self:trace(\"\")\n\n    self.devicesMap = self:getGlobal('SMAdevices', {})\n    self:initDevices()\n\n    self:updateProperty(\"manufacturer\", \"SMA\")\n    self:updateProperty(\"model\", \"Inverter\")\n\n    self.http = net.HTTPClient({timeout=10000})\n    self.smaUrl = self:getVariable(\"API URL\")\n    self.smaRight = self:getVariable(\"API User\")\n    self.smaPass = self:getVariable(\"API Password\")\n    self.autoUpdateInterval = 5\n    self.sid = false\n    self.values = {}\n\n    self.loadProperties()\n    self.loadKeys()\n    self:loadPhrases(api.get(\"/settings/info\").defaultLanguage)\n\n    self:updateView(\"label1\", \"text\", self.phrases[\"LAST_UPDATE\"] .. \": -----------\")\n\n    if (string.sub(self.smaUrl, 0, 4) ~= 'http') then\n        self.autoUpdateInterval = 0\n        self:error(\"API URL must be provided!\")\n        self:updateView(\"label1\", \"text\", self.phrases[\"CONFIG_INCOMPLETE\"])\n        self:updateView(\"label2\", \"text\", self.phrases[\"AUTO_UPDATE_0\"])\n    elseif (string.len(self.smaPass) < 3) then\n        self.autoUpdateInterval = 0\n        self:error(\"API Password must be provided!\")\n        self:updateView(\"label1\", \"text\", self.phrases[\"CONFIG_INCOMPLETE\"])\n        self:updateView(\"label2\", \"text\", self.phrases[\"AUTO_UPDATE_0\"])\n    end\n\n    self:updateView(\"button1\", \"text\", self.phrases[\"REFRESH\"])\n    self:updateView(\"label2\", \"text\", string.format(self.phrases[\"AUTO_UPDATE_1\"], self.autoUpdateInterval))\n    self:updateView(\"slider1\", \"value\", tostring(self.autoUpdateInterval))\n    self:run()\nend\n\nfunction QuickApp:initDevices()\n\n    self:loadDevicesMap()\n    self:initChildDevices(self.smaDevicesMap)\n    self:trace(\"Detected child devices:\")\n\n    for id, device in pairs(self.childDevices) do\n        local detectedId = 'NO'\n        for smaId, deviceId in pairs(self.devicesMap) do\n            if (deviceId == id) then\n                detectedId = smaId\n            end\n        end\n        self:trace(\"[#\" .. id .. \"]\", device.name .. \", SMAID: \", detectedId)\n    end\nend\n\nfunction QuickApp:button1Event(event)\n    self:login()\nend\n\nfunction QuickApp:slider1Event(event)\n    self.autoUpdateInterval = event[\"values\"][1]\n    if (self.autoUpdateInterval > 0) then\n        self:updateView(\"label2\", \"text\", string.format(self.phrases[\"AUTO_UPDATE_1\"], self.autoUpdateInterval))\n    else\n        self:updateView(\"label2\", \"text\", self.phrases[\"AUTO_UPDATE_0\"])\n    end\nend\n\nfunction QuickApp:run()\n    self:login()\n    if (self.autoUpdateInterval > 0) then\n        fibaro.setTimeout(self.autoUpdateInterval * 60 * 1000, function() self:run() end)\n    end\nend\n\nfunction QuickApp:login()\n\n    if (string.sub(self.smaUrl, 0, 4) ~= 'http') then\n        return\n    end\n\n    self:updateView(\"button1\", \"text\", self.phrases[\"WAIT\"])\n    local parameters = {\n        right = self.smaRight,\n        pass = self.smaPass\n    }\n    self.http:request(self.smaUrl .. \"/dyn/login.json\", {\n        options = {\n            data = json.encode(parameters),\n            checkCertificate = false,\n            method = 'POST'\n        },\n        success = function (response)\n            \n            local responseData = string.gsub(response.data, \"null\", \"false\")\n            local json = json.decode(responseData)\n            local sid = json.result.sid\n            if (sid == false) then\n                self.autoUpdateInterval = 0\n                self:updateView(\"slider1\", \"value\", tostring(self.autoUpdateInterval))\n                self:updateView(\"label1\", \"text\", self.phrases[\"INVALID_CREDENTIALS\"])\n                self:error(\"Unable to login to SMA API. Check username and password!\")\n                self:updateView(\"label2\", \"text\", self.phrases[\"AUTO_UPDATE_0\"])\n                self:updateView(\"button1\", \"text\", self.phrases[\"REFRESH\"])\n            else\n                self.sid = sid\n                self:debug(\"logged in as \" .. sid)\n                self:getValues(sid)\n            end\n        end,\n        error = function (error)\n            self:error(json.encode(error))\n        end\n    }) \nend\n\nfunction QuickApp:getValues(sid)\n    local parameters = {\n        destDev = {},\n        keys = self.keys\n    }\n    self.values = {}\n    parameters = json.encode(parameters)\n    parameters = string.gsub(parameters, \"{}\", \"[]\") -- tiny hack\n    self.http:request(self.smaUrl .. \"/dyn/getValues.json?sid=\" .. sid, {\n        options = {\n            data = parameters,\n            checkCertificate = false,\n            method = 'POST'\n        },\n        success = function (response)\n            local text = string.gsub(response.data, \"null\", \"0\") -- another hack\n            local json = json.decode(text)\n            -- self:debug(\"values\", text)\n            local devices = json.result\n            for deviceId, v in pairs(devices) do\n                for property, value in pairs(v) do\n                    self.values[property] = {\n                        masterDeviceId = deviceId,\n                        name = self.smaProperties[property],\n                        value = value[\"1\"][1]['val']\n                    }\n                end\n            end\n            -- i found that some older units support this value\n            -- but if it's not present, we can get today yield\n            -- using logger, just like inverter's UI\n            if (self.values[\"6400_00262200\"] == nil) then\n                -- self:debug(\"6400_00262200 not present in values, fetching logger.\")\n                self:getYield(sid)\n            else\n                self:logout(sid)\n                self:createDevices()\n            end\n        end,\n        error = function (error)\n            self:error(json.encode(error))\n            self:logout(sid)\n        end\n    }) \n    \nend\n\nfunction QuickApp:getYield(sid)\n    local midnight = os.time({year = os.date(\"%Y\"), month = os.date(\"%m\"), day = os.date(\"%d\"), hour = 0, min = 0})\n    local parameters = {\n        destDev = {},\n        key = 28672,\n        tStart = midnight,\n        tEnd = midnight + 86400\n    }\n    parameters = json.encode(parameters)\n    parameters = string.gsub(parameters, \"{}\", \"[]\") -- tiny hack\n    self.http:request(self.smaUrl .. \"/dyn/getLogger.json?sid=\" .. sid, {\n        options = {\n            data = parameters,\n            checkCertificate = false,\n            method = 'POST'\n        },\n        success = function (response)\n            -- self:trace(json.encode(response.data))\n            local json = json.decode(response.data)\n            self:logout(sid)\n            local devices = json.result\n            for deviceId, v in pairs(devices) do\n                local property = \"6400_00262200\"\n                local yield = v[#v]['v'] - v[1]['v']\n                self.values[property] = {\n                    masterDeviceId = deviceId,\n                    name = self.smaProperties[property],\n                    value = yield\n                }\n                self:createDevices()\n            end\n        end,\n        error = function (error)\n            self:error(json.encode(error))\n            self:logout(sid)\n        end\n    }) \nend\n\nfunction QuickApp:logout(sid)\n    self:updateView(\"button1\", \"text\", self.phrases[\"REFRESH\"])\n    self.http:request(self.smaUrl .. \"/dyn/logout.json?sid=\" .. sid, {\n        options = {\n            data = json.encode({}),\n            checkCertificate = false,\n            method = 'POST'\n        },\n        success = function (response)\n            local json = json.decode(response.data)\n            -- self:debug(response.data)\n            if (json.result.isLogin == false) then\n                self:debug(sid .. \" successfully logged out\")\n                self.sid = false\n            end\n        end,\n        error = function (error)\n            self:error(json.encode(error))\n        end\n    })\nend\n\nfunction QuickApp:createDevices()\n    for property, data in pairs(self.values) do\n        local name = self.phrases[\"NAMES\"][self.smaProperties[property]]\n        if (not name) then\n            name = self.smaProperties[property]\n        end\n        if (not name) then\n            name = property\n        end\n        local type = \"com.fibaro.multilevelSensor\"\n        local data = self.values[property]\n        local child = self:addSMAChildDevice(property, name, type)\n\n        local value = data.value\n        local unit = self:getUnit(property)\n\n        if (value > 1000000) then\n            unit = \"m\" .. unit\n            value = value / 1000000\n        elseif (value > 1000) then\n            unit = \"k\" .. unit\n            value = value / 1000\n        end\n\n        child:updateProperty(\"unit\", unit)\n        child:updateProperty(\"value\", value)\n    end\n    self:updateView(\"label1\", \"text\", self.phrases[\"LAST_UPDATE\"] .. \": \" .. os.date(\"%Y-%m-%d %H:%M:%S\"))\nend\n\nfunction QuickApp:addSMAChildDevice(id, name, type)\n    -- look for devices in global map\n    if (self.devicesMap[id] ~= nil) then\n        local childId = self.devicesMap[id .. 'a']\n        if (self.childDevices[childId] ~= nil) then\n            return self.childDevices[childId]\n        end\n    end\n    -- match by name\n    for childDeviceId, childDevice in pairs(self.childDevices) do\n        if (childDevice.name == name) then\n            return childDevice\n        end\n    end\n    -- create new child device\n    local child = self:createChildDevice({\n        name = name,\n        type = type\n    }, self.smaDevicesMap[type])\n\n    local parentRoomID = api.get('/devices/' .. self.id).roomID\n    api.put('/devices/' .. child.id, {\n        [\"roomID\"] = parentRoomID\n    })\n\n    self:storeDevice(id, child.id)\n    self:trace(\"Child device created: [#\" .. child.id .. \"]\", child.name .. \", SMAID:\", id)\n    return child\nend\n\nfunction QuickApp:storeDevice(deviceNativeName, deviceId)\n    self.devicesMap[deviceNativeName] = deviceId\n    self:setGlobal('SMAdevices', self.devicesMap)\nend\n\nfunction QuickApp:getGlobal(name, alternative)\n    local response = api.get('/globalVariables/' .. name)\n    if (response) then\n        if (string.sub(response.value, 1, 1) == '{') then\n            return json.decode(response.value)\n        end\n        return response.value\n    end\n\n    return alternative\nend\n\nfunction QuickApp:setGlobal(name, value)\n    local response = api.put('/globalVariables/' .. name, {\n        name = name,\n        value = json.encode(value)\n    })\n    if not response then\n        local response = api.post('/globalVariables', {\n            name = name,\n            value = json.encode(value)\n        })\n    end\n    self:debug(json.encode(response))\nend\n\n-- ---------------------------------\n-- Dictionaries\n-- ---------------------------------\n\nfunction QuickApp:loadDevicesMap()\n    QuickApp.smaDevicesMap = {\n        [\"com.fibaro.multilevelSensor\"] = SMAMeter,\n    }\nend\n\nfunction QuickApp:loadKeys()\n    QuickApp.keys = {\n        \"6100_00411E00\",\n        \"6100_40263F00\",\n        \"6400_00260100\",\n        \"6400_00262200\"\n    }\nend\n\nfunction QuickApp:getUnit(property)\n    local units = {\n        [\"6100_00411E00\"] = \"W\",\n        [\"6100_40263F00\"] = \"W\",\n        [\"6400_00260100\"] = \"Wh\",\n        [\"6400_00262200\"] = \"Wh\"\n    }\n    return units[property]\nend\n\nfunction QuickApp:loadProperties()\n    QuickApp.smaProperties = {\n        [\"6100_00411E00\"] = \"power_maximum\",\n        [\"6100_40263F00\"] = \"power_current\",\n        [\"6400_00260100\"] = \"yield_total\",\n        [\"6400_00262200\"] = \"yield_today\"\n    }\nend\n\nfunction QuickApp:loadPhrases(lang)\n    local phrases = {\n        en = {\n            REFRESH = \"Refresh metrics\",\n            WAIT = \"Please wait...\",\n            LAST_UPDATE = \"Last update\",\n            AUTO_UPDATE_0 = \"Auto update is disabled\",\n            AUTO_UPDATE_1 = \"Auto update every %d minutes\",\n            CONFIG_INCOMPLETE = \"Invalid configuration!\",\n            INVALID_CREDENTIALS = \"SMA API: Invalid login details\",\n            NAMES = {\n                [\"power_maximum\"] = \"PV system power\",\n                [\"power_current\"] = \"Current PV Power\",\n                [\"yield_today\"] = \"PV Energy\",\n                [\"yield_total\"] = \"Total PV energy\"\n            }\n        },\n        pl = {\n            REFRESH = \"Odśwież dane\",\n            WAIT = \"Proszę czekać...\",\n            LAST_UPDATE = \"Ostatnia aktualizacja\",\n            AUTO_UPDATE_0 = \"Automatyczna aktualizacja jest wyłączona\",\n            AUTO_UPDATE_1 = \"Automatyczna aktualizacja co %s minut\",\n            CONFIG_INCOMPLETE = \"Nieprawidłowa konfiguracja!\",\n            INVALID_CREDENTIALS = \"SMA API: Nieprawidłowe dane logowania\",\n            NAMES = {\n                [\"power_maximum\"] = \"Moc instalacji\",\n                [\"power_current\"] = \"Aktualna moc PV\",\n                [\"yield_today\"] = \"Energia fotowoltaiczna\",\n                [\"yield_total\"] = \"Całkowita energia fotowoltaiczna\"\n            }\n        },\n        de = {\n            REFRESH = \"Daten aktualisieren\",\n            WAIT = \"Ein moment bitte...\",\n            LAST_UPDATE = \"Letzte aktualisierung\",\n            AUTO_UPDATE_0 = \"Die automatische Aktualisierung ist deaktiviert\",\n            AUTO_UPDATE_1 = \"Automatische Aktualisierung alle %s Minuten\",\n            CONFIG_INCOMPLETE = \"Falsche konfiguration\",\n            INVALID_CREDENTIALS = \"SMA API: Falsches passwort oder login\",\n            NAMES = {\n                [\"power_maximum\"] = \"Anlagenleistung\",\n                [\"power_current\"] = \"Aktuelle PV-Leistung\",\n                [\"yield_today\"] = \"PV-Energie\",\n                [\"yield_total\"] = \"PV-Energie gesamt\"\n            }\n        }\n    }\n    if (phrases[lang] == nil) then\n        QuickApp.phrases = phrases[\"en\"]\n    else\n        QuickApp.phrases = phrases[lang]\n    end\nend\n\n-- ----------------------------------------\n-- Class definition for child devices\n-- ----------------------------------------\n\nclass 'SMAMeter' (QuickAppChild)\nfunction SMAMeter:__init(device)\n    QuickAppChild.__init(self, device)\nend\n\nfunction SMAMeter:getProperty(name)\n    local value = fibaro.getValue(self.id, name)\n    return value\nend"
+        }
+    ]
+}

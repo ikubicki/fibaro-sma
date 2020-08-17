@@ -30,8 +30,21 @@ function QuickApp:onInit()
     self.loadKeys()
     self:loadPhrases(api.get("/settings/info").defaultLanguage)
 
-    self:updateView("button1", "text", self.phrases["REFRESH"])
     self:updateView("label1", "text", self.phrases["LAST_UPDATE"] .. ": -----------")
+
+    if (string.sub(self.smaUrl, 0, 4) ~= 'http') then
+        self.autoUpdateInterval = 0
+        self:error("API URL must be provided!")
+        self:updateView("label1", "text", self.phrases["CONFIG_INCOMPLETE"])
+        self:updateView("label2", "text", self.phrases["AUTO_UPDATE_0"])
+    elseif (string.len(self.smaPass) < 3) then
+        self.autoUpdateInterval = 0
+        self:error("API Password must be provided!")
+        self:updateView("label1", "text", self.phrases["CONFIG_INCOMPLETE"])
+        self:updateView("label2", "text", self.phrases["AUTO_UPDATE_0"])
+    end
+
+    self:updateView("button1", "text", self.phrases["REFRESH"])
     self:updateView("label2", "text", string.format(self.phrases["AUTO_UPDATE_1"], self.autoUpdateInterval))
     self:updateView("slider1", "value", tostring(self.autoUpdateInterval))
     self:run()
@@ -76,6 +89,10 @@ end
 
 function QuickApp:login()
 
+    if (string.sub(self.smaUrl, 0, 4) ~= 'http') then
+        return
+    end
+
     self:updateView("button1", "text", self.phrases["WAIT"])
     local parameters = {
         right = self.smaRight,
@@ -88,14 +105,25 @@ function QuickApp:login()
             method = 'POST'
         },
         success = function (response)
-            local json = json.decode(response.data)
+            
+            local responseData = string.gsub(response.data, "null", "false")
+            local json = json.decode(responseData)
             local sid = json.result.sid
-            self.sid = sid
-            self:debug("logged in as " .. sid)
-            self:getValues(sid)
+            if (sid == false) then
+                self.autoUpdateInterval = 0
+                self:updateView("slider1", "value", tostring(self.autoUpdateInterval))
+                self:updateView("label1", "text", self.phrases["INVALID_CREDENTIALS"])
+                self:error("Unable to login to SMA API. Check username and password!")
+                self:updateView("label2", "text", self.phrases["AUTO_UPDATE_0"])
+                self:updateView("button1", "text", self.phrases["REFRESH"])
+            else
+                self.sid = sid
+                self:debug("logged in as " .. sid)
+                self:getValues(sid)
+            end
         end,
         error = function (error)
-            self:debug('error: ' .. json.encode(error))
+            self:error(json.encode(error))
         end
     }) 
 end
@@ -220,8 +248,20 @@ function QuickApp:createDevices()
         local type = "com.fibaro.multilevelSensor"
         local data = self.values[property]
         local child = self:addSMAChildDevice(property, name, type)
-        child:updateProperty("unit", self:getUnit(property))
-        child:updateProperty("value", data.value)
+
+        local value = data.value
+        local unit = self:getUnit(property)
+
+        if (value > 1000000) then
+            unit = "m" .. unit
+            value = value / 1000000
+        elseif (value > 1000) then
+            unit = "k" .. unit
+            value = value / 1000
+        end
+
+        child:updateProperty("unit", unit)
+        child:updateProperty("value", value)
     end
     self:updateView("label1", "text", self.phrases["LAST_UPDATE"] .. ": " .. os.date("%Y-%m-%d %H:%M:%S"))
 end
@@ -333,6 +373,8 @@ function QuickApp:loadPhrases(lang)
             LAST_UPDATE = "Last update",
             AUTO_UPDATE_0 = "Auto update is disabled",
             AUTO_UPDATE_1 = "Auto update every %d minutes",
+            CONFIG_INCOMPLETE = "Invalid configuration!",
+            INVALID_CREDENTIALS = "SMA API: Invalid login details",
             NAMES = {
                 ["power_maximum"] = "PV system power",
                 ["power_current"] = "Current PV Power",
@@ -346,6 +388,8 @@ function QuickApp:loadPhrases(lang)
             LAST_UPDATE = "Ostatnia aktualizacja",
             AUTO_UPDATE_0 = "Automatyczna aktualizacja jest wyłączona",
             AUTO_UPDATE_1 = "Automatyczna aktualizacja co %s minut",
+            CONFIG_INCOMPLETE = "Nieprawidłowa konfiguracja!",
+            INVALID_CREDENTIALS = "SMA API: Nieprawidłowe dane logowania",
             NAMES = {
                 ["power_maximum"] = "Moc instalacji",
                 ["power_current"] = "Aktualna moc PV",
@@ -359,6 +403,8 @@ function QuickApp:loadPhrases(lang)
             LAST_UPDATE = "Letzte aktualisierung",
             AUTO_UPDATE_0 = "Die automatische Aktualisierung ist deaktiviert",
             AUTO_UPDATE_1 = "Automatische Aktualisierung alle %s Minuten",
+            CONFIG_INCOMPLETE = "Falsche konfiguration",
+            INVALID_CREDENTIALS = "SMA API: Falsches passwort oder login",
             NAMES = {
                 ["power_maximum"] = "Anlagenleistung",
                 ["power_current"] = "Aktuelle PV-Leistung",
