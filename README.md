@@ -1,3 +1,9 @@
+# Discontinued
+
+Due to fact that I have provided two other devices that allow for bigger customization, i will not maintain this Quick App anymore.
+
+Please choose https://github.com/ikubicki/fibaro-sma-power-sensor and https://github.com/ikubicki/fibaro-sma-energy-sensor instead.
+
 # SMA Inverters integration plugin
 
 Allows to pull few metrics from SMA inverter via API of the unit.
